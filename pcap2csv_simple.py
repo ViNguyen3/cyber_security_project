@@ -21,13 +21,14 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 from datetime import datetime, timezone
 
+# using dpkt to read the given PCAP file
 try:
     import dpkt
 except Exception:
     print("Missing dependency: dpkt. Install with: pip install dpkt", file=sys.stderr)
     sys.exit(1)
 
-
+#converting raw IP bytes into human readable IPv4 or IPv6 
 def inet_to_str(addr_bytes):
     """Bytes -> dotted (v4) or compressed (v6) string."""
     if len(addr_bytes) == 4:
@@ -36,7 +37,7 @@ def inet_to_str(addr_bytes):
         return socket.inet_ntop(socket.AF_INET6, addr_bytes)
     return "0.0.0.0"
 
-
+#tracks mean and std-dev incrementally 
 class OnlineStats:
     """Welford online mean/std for numeric streams (robust and tiny)."""
     __slots__ = ("n", "mean", "M2")
@@ -54,7 +55,9 @@ class OnlineStats:
     def get_std(self) -> float:
         return math.sqrt(self.M2 / (self.n - 1)) if self.n > 1 else 0.0
 
-
+#data class to store in CSV 
+#each flow store identity (protocal), time (start_ts, end_ts), counts/bytes (fwd_pkts, bwd_pkts, fwd_bytes, bwd_bytes.) 
+# stats(per-direction and overall packet length) and TCP flags (SYN/ACK/FIN/RST counts per direction.)
 @dataclass
 class Flow:
     proto: int
@@ -84,6 +87,7 @@ class Flow:
     fwd_syn: int = 0; fwd_ack: int = 0; fwd_fin: int = 0; fwd_rst: int = 0
     bwd_syn: int = 0; bwd_ack: int = 0; bwd_fin: int = 0; bwd_rst: int = 0
 
+    # decides packets direction (forwad vs backward) through comparing 5 tuples 
     def update(self, ts: float, src_ip: str, sport: int, dst_ip: str, dport: int, ip_len: int, tcp_flags: int | None):
         self.end_ts = ts
         is_fwd = (src_ip == self.fwd_ip and sport == self.fwd_port and dst_ip == self.bwd_ip and dport == self.bwd_port)
@@ -120,14 +124,14 @@ class Flow:
             self.all_iat.add((ts - self.all_last_ts) * 1000.0)
         self.all_last_ts = ts
 
-
+# orders the 5-tuple so both directions map to the same key.
 def flow_key(proto: int, a_ip: str, a_p: int, b_ip: str, b_p: int):
     """Canonicalize 5-tuple so both directions map to same key."""
     left = (a_ip, a_p, b_ip, b_p)
     right = (b_ip, b_p, a_ip, a_p)
     return (proto, left) if left <= right else (proto, right)
 
-
+#Parses Ethernet → IP/IPv6 → TCP/UDP using dpkt and return a compact tuple 
 def decode_packet(buf: bytes):
     """
     Return tuple:

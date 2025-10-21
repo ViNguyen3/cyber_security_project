@@ -37,6 +37,7 @@ def packet_logger(pc: PacketCapture, stop_event: threading.Event, log_path: str)
             f.write(f"{ts}  {proto}  {src}:{sport} -> {dst}:{dport}\n")
             f.flush()
 
+#building sets of packets that mimic normal TCP 
 def make_test_packets():
     """Return a short list of synthetic packets (IPv4 TCP/UDP)."""
     return [
@@ -61,6 +62,9 @@ def build_packet_capture():
         # Fallback for older versions without the flag
         return PacketCapture(**kwargs)
 
+
+#Flow 
+# create capture -> start logger thread -> start capture -> injhect packets -> print 
 def main():
     pc = build_packet_capture()
     stop_event = threading.Event()
