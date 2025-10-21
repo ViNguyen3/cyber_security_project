@@ -3,6 +3,10 @@ import threading, queue, time, os
 from typing import Optional
 
 class PacketCapture:
+
+    #choosing which interface to capture from 
+    #create internal queue for holding packets 
+    #apply filter to limit captured traffic like tcp or udp
     def __init__(
         self,
         interface: str = "eth0",
@@ -32,6 +36,8 @@ class PacketCapture:
             os.makedirs(self.pcap_dir, exist_ok=True)
 
     # ---- internals ----
+    #checking if we need to roll over to a new file aft er every rotate_sec and ensure continuopus logging
+    #avoiding putting every log in 1 huge file 
     def _maybe_rotate(self):
         if not self.pcap_dir:
             return
@@ -44,6 +50,9 @@ class PacketCapture:
             self._pw = PcapWriter(path, append=False, sync=True)
             self._next_rotate = now + self.rotate_sec
 
+    #core call back everytime new packets arrived to 
+    # filter packets for IP, IPv5, TCP or UDP traffic 
+    # update metrics and call log to PCAP files 
     def _on_packet(self, pkt):
         # Accept IPv4/IPv6 + TCP/UDP (extend as needed)
         if not ( (IP in pkt or IPv6 in pkt) and (TCP in pkt or UDP in pkt) ):
@@ -63,6 +72,8 @@ class PacketCapture:
             self.pkts_dropped_queue += 1  # monitor this; increase queue or speed up analyzer
 
     # ---- public API ----
+    # start capturing 
+    # using Scapy's Asynsniffer to start background thread, call on_packet for every captured packet in real time 
     def start(self):
         # rotate immediately if pcap_dir set
         if self.pcap_dir:
@@ -77,6 +88,7 @@ class PacketCapture:
         )
         self._sniffer.start()  # runs in its own daemon thread
 
+    #signal sniffer to stop and close current pcap file
     def stop(self):
         self._stop.set()
         if self._sniffer:
