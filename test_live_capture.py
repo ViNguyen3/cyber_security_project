@@ -4,9 +4,11 @@ import scapy.all
 from scapy.all import IP, IPv6, TCP, UDP
 from packet_capture_v1 import PacketCapture  # your v1
 
-IFACE = "eth0"   # Linux: eth0/wlan0/lo ; macOS: en0/lo0
-LOG_PATH = "packets_live.jsonl"
+#setting which interface to sniff 
+IFACE = "Intel(R) I211 Gigabit Network Connection"   # Linux: eth0/wlan0/lo ; macOS: en0/lo0
+LOG_PATH = "packets_live.jsonl" #where we gonna save the json file log of the packet 
 
+#sumarrize one Scapy packet into a small JSON serializable dict 
 def pkt_meta(p):
     d = {"ts": float(getattr(p, "time", time.time())), "len": int(len(p))}
     if IP in p:    d.update(l3="IPv4", src=p[IP].src,  dst=p[IP].dst)
@@ -15,8 +17,12 @@ def pkt_meta(p):
     elif UDP in p: d.update(l4="UDP", sport=int(p[UDP].sport), dport=int(p[UDP].dport))
     return d
 
-pc = PacketCapture(interface=IFACE, bpf_filter="tcp or udp", pcap_dir=None)
-pc.start()
+pc = PacketCapture(
+    interface=IFACE,
+    bpf_filter="tcp or udp", #only capture tcp/udp 
+    pcap_dir=None)#dont write to .pcap file 
+
+pc.start() #start AsyncSniffer in the background 
 print(f"[+] capturing on {IFACE} for 15s… try in another terminal:\n"
       f"    curl http://example.com\n    dig openai.com\n    ssh localhost (then exit)")
 

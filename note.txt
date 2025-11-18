@@ -1,0 +1,4 @@
+To find the available interfaces on a machines
+1. type python into terminal to activate Pythopn interactive shell
+2. from scapy.all import show_interfaces
+show_interfaces()
