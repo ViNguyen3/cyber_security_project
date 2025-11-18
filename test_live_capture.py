@@ -20,7 +20,7 @@ def pkt_meta(p):
 pc = PacketCapture(
     interface=IFACE,
     bpf_filter="tcp or udp", #only capture tcp/udp 
-    pcap_dir=None)#dont write to .pcap file 
+    pcap_dir="./pcaps")# write to .pcap file 
 
 pc.start() #start AsyncSniffer in the background 
 print(f"[+] capturing on {IFACE} for 15s… try in another terminal:\n"
