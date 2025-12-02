@@ -24,7 +24,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install numpy pandas scikit-learn xgboost joblib
 
 # 3) Converting PCAP to CSV (UNSW-style CSV)
-.\.venv\Scripts\python.exe pcap2csv_simple_with_flow.py <input>.pcap <input>_unsw.csv
+pcap2csv_simple_with_flow.py <input>.pcap <input>_unsw.csv
 
 Input: dhcp.pcap 
 Output: dhcp_unsw.csv
