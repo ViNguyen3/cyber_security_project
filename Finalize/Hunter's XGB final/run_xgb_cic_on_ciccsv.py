@@ -1,16 +1,71 @@
+# hunter_predict.py
+
 import sys
 import os
-import pandas as pd
 import joblib
-from xgboost import XGBClassifier
+import numpy as np
+import pandas as pd
 
 
 MODEL_FILENAME = "XGBoost_classifier.json"
 
 
+def preprocess_for_hunter_model(df_raw: pd.DataFrame) -> np.ndarray:
+    """
+    Apply the SAME preprocessing that script.py uses,
+    but in a reusable function for new data.
+    """
+    df = df_raw.copy()
+
+    # 1) Match script.py: strip + uppercase column names
+    df.columns = df.columns.str.strip()
+    df.columns = df.columns.str.upper()
+
+    # 2) Drop entirely empty rows (just in case)
+    df = df.dropna(how="all", axis=0).reset_index(drop=True)
+
+    # 3) Drop FLOW ID if present
+    if "FLOW ID" in df.columns:
+        df = df.drop(columns=["FLOW ID"])
+
+    # 4) Drop LABEL if present (for inference we don't need it in X)
+    if "LABEL" in df.columns:
+        df = df.drop(columns=["LABEL"])
+
+    # 5) IP feature engineering (SOURCE IP / DESTINATION IP -> octets)
+    ip_columns = ["SOURCE IP", "DESTINATION IP"]
+    for ip_col in ip_columns:
+        if ip_col in df.columns:
+            new_octets = df[ip_col].astype(str).str.split(".", expand=True)
+            # coerce to numeric (invalid -> NaN -> later to 0)
+            new_octets = new_octets.apply(pd.to_numeric, errors="coerce")
+            new_octets.columns = [f"{ip_col} {i}" for i in range(4)]
+            df = pd.concat([df, new_octets], axis=1)
+            df = df.drop(columns=[ip_col])
+
+    # 6) TIMESTAMP feature engineering
+    if "TIMESTAMP" in df.columns:
+        ts = pd.to_datetime(df["TIMESTAMP"], errors="coerce")
+        df["DAY"] = ts.dt.day
+        df["DAY OF WEEK"] = ts.dt.dayofweek
+        df["MONTH"] = ts.dt.month
+        df["YEAR"] = ts.dt.year
+        df["MINUTE"] = ts.dt.minute
+        df["HOUR"] = ts.dt.hour
+        df = df.drop(columns=["TIMESTAMP"])
+
+    # 7) Convert to numpy and handle inf / NaN like script.py
+    X = df.to_numpy()
+    X = X.astype(float, copy=False)  # best-effort numeric
+    X[np.isinf(X)] = np.nan
+    X = np.nan_to_num(X, nan=0.0)
+
+    return X
+
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python run_xgb_cic_on_ciccsv.py <cic_csv_file>")
+        print("Usage: python hunter_predict.py <cicflowmeter_csv>")
         sys.exit(1)
 
     csv_path = sys.argv[1]
@@ -24,97 +79,43 @@ def main():
         sys.exit(1)
 
     print(f"[*] Loading model from {MODEL_FILENAME} ...")
-    # This follows your teammate's instruction exactly:
-    # loaded_model = joblib.load(MODEL_FILENAME)
-    model: XGBClassifier = joblib.load(MODEL_FILENAME)
+    model = joblib.load(MODEL_FILENAME)
 
     print(f"[*] Loading data from {csv_path} ...")
-    df = pd.read_csv(csv_path)
+    df_raw = pd.read_csv(csv_path)
 
-    # --- Separate label column if it exists (for optional evaluation) ---
-    label_col = None
-    for c in ["Label", "LABEL", "label"]:
-        if c in df.columns:
-            label_col = c
-            break
+    print("[*] Preprocessing data (same as script.py) ...")
+    X_new = preprocess_for_hunter_model(df_raw)
 
-    y_true = None
-    if label_col is not None:
-        y_true = df[label_col].copy()
-        df = df.drop(columns=[label_col])
+    print(f"[*] Feature shape for new data: {X_new.shape}")
 
-    # NOTE:
-    # We assume the CSV already has the SAME feature columns and preprocessing
-    # that Hunter used in training. We do NOT change column types here.
-    X_new_data = df.values
+    print("[*] Running predictions ...")
+    new_preds = model.predict(X_new)
 
-    print("[*] Running model.predict on new data ...")
-    new_predictions = model.predict(X_new_data)
-
-    # Try to get human-readable class names (if available)
+    # Try to get class names, if stored
     class_names = getattr(model, "classes_", None)
 
-    # Build an output DataFrame with some useful meta info if present
-    meta_cols = [
-        "Flow ID",
-        "Source IP",
-        "Source Port",
-        "Destination IP",
-        "Destination Port",
-        "Protocol",
-    ]
-    meta_cols = [c for c in meta_cols if c in df.columns]
-
+    # Build a small result DataFrame to inspect
     result = pd.DataFrame()
-    for c in meta_cols:
-        result[c] = df[c]
+    # Some useful meta columns if present
+    for col in ["FLOW ID", "SOURCE IP", "SOURCE PORT", "DESTINATION IP", "DESTINATION PORT", "PROTOCOL"]:
+        col_up = col.upper()
+        if col_up in df_raw.columns:
+            result[col_up] = df_raw[col_up]
 
-    result["pred_class_index"] = new_predictions
-
+    result["PRED_CLASS_IDX"] = new_preds
     if class_names is not None and len(class_names) > 0:
         try:
-            result["pred_class_name"] = [class_names[int(i)] for i in new_predictions]
+            result["PRED_CLASS_NAME"] = [class_names[int(i)] for i in new_preds]
         except Exception:
-            # If classes_ are also numeric, this mapping might be redundant; ignore errors.
             pass
 
-    if y_true is not None:
-        result["true_label"] = y_true
-
-    # Save results
-    out_path = csv_path.replace(".csv", "_with_predictions_cic.csv")
+    out_path = csv_path.replace(".csv", "_hunter_preds.csv")
     result.to_csv(out_path, index=False)
     print(f"[+] Saved predictions to {out_path}")
 
-    # Print a quick preview
-    print("\n=== CIC/XGB Prediction Preview (first 10 flows) ===")
-    for i, row in result.head(10).iterrows():
-        parts = []
-        if {"Source IP", "Source Port", "Destination IP", "Destination Port"} <= set(
-            result.columns
-        ):
-            parts.append(
-                f"{row['Source IP']}:{row['Source Port']} -> "
-                f"{row['Destination IP']}:{row['Destination Port']}"
-            )
-        if "pred_class_name" in result.columns:
-            parts.append(f"class={row['pred_class_name']}")
-        else:
-            parts.append(f"class_idx={row['pred_class_index']}")
-        if "true_label" in result.columns:
-            parts.append(f"true={row['true_label']}")
-        print(f"[Flow {i:03d}] " + " | ".join(parts))
-
-    # Optional: if we had true labels, show accuracy
-    if y_true is not None:
-        try:
-            from sklearn.metrics import accuracy_score, classification_report
-
-            print("\n=== Evaluation against label column ===")
-            print("Accuracy:", accuracy_score(y_true, new_predictions))
-            print(classification_report(y_true, new_predictions))
-        except Exception as e:
-            print(f"[!] Could not compute metrics: {e}")
+    print("\n=== Preview (first 10 rows) ===")
+    print(result.head(10))
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ print("✅ Loaded model and preprocessing artifacts")
 # -----------------------------
 # 2. Load new CSV from pcap
 # -----------------------------
-NEW_CSV_PATH = "capture_20251117_with_5_unsw_attacks.csv"  # <--- change if you use a different file
+NEW_CSV_PATH = "new_combine.csv"  # <--- change if you use a different file
 df_new = pd.read_csv(NEW_CSV_PATH)
 print("New data shape (raw):", df_new.shape)
 
