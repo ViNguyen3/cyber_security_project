@@ -25,3 +25,8 @@ Thumbs.db
 # --- Logs / temp ---
 *.log
 *.tmp
+
+
+# Local UNSW dataset dumps
+archive/
+archive.zip
