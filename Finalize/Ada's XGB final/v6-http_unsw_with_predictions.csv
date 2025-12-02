@@ -1,0 +1,3 @@
+srcip,sport,dstip,dsport,proto,service,state,pred_label,pred_class,attack_prob
+2001:6f8:102d:0:1033:c4c:7e57:b19e,5353,ff02::fb,5353,udp,other,CON,1,Attack,0.9692972
+2001:6f8:102d:0:2d0:9ff:fee3:e8de,59201,2001:6f8:900:7c0::2,80,tcp,http,SF,1,Attack,0.9958229
