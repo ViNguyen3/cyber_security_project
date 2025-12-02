@@ -1,0 +1,3 @@
+srcip,sport,dstip,dsport,proto,service,state,pred_label,pred_class,attack_prob
+0.0.0.0,68,255.255.255.255,67,udp,other,CON,1,Attack,0.97763556
+192.168.0.1,67,192.168.0.10,68,udp,other,CON,1,Attack,0.97763556
